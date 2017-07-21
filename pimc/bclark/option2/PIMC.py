@@ -36,6 +36,7 @@ class PathClass:
         self.beads=beads.copy()
         self.NumTimeSlices=len(beads)
         self.NumParticles=len(beads[0])
+        self.NumDimensions=beads.shape[2]
         print(self)
     def __str__(self):
         rep = "I have setup the path with a temperature of %6.4f and %d particles." % \
@@ -81,6 +82,14 @@ class PathClass:
         tot *= self.tau
         # you will fill this in
         return tot
+    def PotentialActionTotal(self):
+        tot = 0.0
+        for slice in self.beads:
+            for ri in np.linalg.norm(slice, axis=1):
+                tot += self.Vext(ri)
+        tot *= self.tau
+        # you will fill this in
+        return tot
     def RelabelBeads(self):
         slicesToShift=random.randint(0,self.NumTimeSlices-1)
         l=list(range(slicesToShift,len(self.beads)))+list(range(0,slicesToShift))
@@ -116,12 +125,37 @@ class PathClass:
         return PE/(self.NumTimeSlices+0.0)
     def Energy(self):
         return self.PotentialEnergy()+self.KineticEnergy()
+    @staticmethod
+    def draw_beads_3d(ax,beads):
+        """ draw all beads in 3D
+        Inputs:
+         ax: matplotlib.Axes3D object
+         beads: 3D numpy array of shape (nslice,nptcl,ndim)
+        Output:
+         ptcls: a list of pairs of plot objects. There is ony entry for each particle. Each entry has two items: line representing the particle and text labeling the particle.
+        Effect:
+         draw all particles on ax """
+  
+        nslice,nptcl,ndim = beads.shape
+        com = beads.mean(axis=0) # center of mass of each particle, used to label the particles only
+  
+        ptcls = []
+        for iptcl in range(nptcl):
+            mypos = beads[:,iptcl,:] # all time slices for particle iptcl
+            pos = np.insert(mypos,0,mypos[-1],axis=0) # close beads
+  
+            line = ax.plot(pos[:,0],pos[:,1],pos[:,2],marker='o') # draw particle
+            text = ax.text(com[iptcl,0],com[iptcl,1],com[iptcl,2],'ptcl %d' % iptcl,fontsize=20) # label particle
+            ptcls.append( (line,text) )
+        return ptcls
 
 from numpy import *
 def PIMC(numSteps, Path, moveList, name='test'):
     observableSkip=10
+    printSkip=1000
     EnergyTrace=[]
     numAccept = zeros((len(moveList)),int)
+    configs=[]
 #    PD = PathDump(name+'PathDump.h5')
     for steps in range(0,numSteps):
         for mi in range(0,len(moveList)):
@@ -129,14 +163,24 @@ def PIMC(numSteps, Path, moveList, name='test'):
                 numAccept[mi] += 1
             if steps % observableSkip==0 and steps>1000:
                 EnergyTrace.append(Path.Energy())
+                if steps % printSkip == 0:
+                  print("step:{:10d}   acc. ratio: {:1.3f}".format(steps,numAccept[mi]/steps))
+                  configs.append(Path.beads)
 #                PairCorrelationFunction(Path,PairHistogram)
 #                CalcDensity(Path,DensityHistogram)
 #                PD.dump(Path)
-        for mi in range(0,len(moveList)):
-            print('Accept ratio = %1.3f' % ((numAccept[mi]+0.0)/numSteps))
+#        for mi in range(0,len(moveList)):
+#            print('Accept ratio = %1.3f' % ((numAccept[mi]+0.0)/numSteps))
     print(CalcStatistics.Stats(numpy.array(EnergyTrace)))
     pylab.plot(EnergyTrace)
     pylab.savefig(name+"Energy.png")
+    with h5py.File("beads.h5","w") as hf:
+        dset = hf.create_dataset("beads",data=configs)
+    with h5py.File("energy.h5","w") as hf:
+        dset = hf.create_dataset("energy",data=EnergyTrace)
+#    numpy.save("test1.npz",EnergyTrace)
+#    numpy.savez("test2.npz",EnergyTrace)
+#    numpy.savez_compressed("test3.npz",EnergyTrace)
 #    PairHistogram.plotMeNorm(name+"PairCorrelation.png")
 #    DensityHistogram.plotMe(name+"Density.png")
     pylab.show()
@@ -215,3 +259,29 @@ def WholeSliceMove(Path,sigma=0.1):
 
     #make sure to remember if you reject the move, to restore the old location of the coordinates
     return accepted #accepted # return true if accepted, otherwise return false
+
+def DisplaceMove(Path):
+    # First, compute the total potential action for all time slices.
+    s_old = Path.PotentialActionTotal()
+    # This move won't change the kinetic action, so you don't need to compute it
+    # Don't forget the link action from the last slice back to the first!
+    # Save a copy of the old path
+    savePath = Path.beads.copy()
+    # Now, create a random vector for displacement
+    #delta = 4.0*numpy.array([random.random()-0.5, random.random()-0.5, random.random()-0.5])
+    delta = 4.0*(numpy.random.random(Path.NumDimensions) - 0.5)
+    # move all the time slices
+    Path.beads += delta[np.newaxis,np.newaxis,:]
+    # Compute the new potential action
+    s_new = Path.PotentialActionTotal()
+    # Accept or reject based on the change in potential action
+    p_accept = np.exp( -(s_new - s_old))
+    accepted = True
+    
+    #accept/reject
+    if p_accept < np.random.random():
+        Path.beads = savePath.copy()
+        accepted = False
+    # Remember to copy back savePath if you reject
+    # Remember to return True if you accept and False if you reject
+    return accepted
