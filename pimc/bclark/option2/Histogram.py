@@ -18,10 +18,10 @@ class Histogram:
                 self.numSamples=self.numSamples+1
         def printMe(self):
                 for i in range(0,len(self.bins)):
-                        print self.min+self.delta*i,self.bins[i]/(self.numSamples+0.0)
+                        print(self.min+self.delta*i,self.bins[i]/(self.numSamples+0.0))
 
         def plotMe(self,fileName=""):
-                print "plotting"
+                print("plotting")
                 pylab.clf()
                 self.bins=self.bins/self.numSamples
                 xCoord=[self.min+self.delta*i for i in range(0,len(self.bins))]
@@ -32,7 +32,7 @@ class Histogram:
                 else:
                    pylab.show()
         def plotMeNorm(self,fileName):
-                print "plotting"
+                print("plotting")
                 pylab.clf()
                 self.bins=self.bins/self.numSamples
                 xCoord=numpy.array([self.min+self.delta*i for i in range(0,len(self.bins))])
